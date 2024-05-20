@@ -1,7 +1,7 @@
 ---
 jupyter:
   jupytext:
-    formats: ipynb,Rmd
+    formats: Rmd,ipynb
     text_representation:
       extension: .Rmd
       format_name: rmarkdown
@@ -21,47 +21,19 @@ library(ragg)
 ```
 
 ```{r}
-Chinese_species_distribution_grid <- read.csv("../chinese_terrestral//species_distribution_grid_filtered.csv",
+Chinese_species_distribution_grid <- read.csv("../chinese_terrestral/species_distribution_grid_filtered.csv",
                                               header = F, col.names = c("class","species","grid_id","area")) %>% 
                                     filter(class == 'amphibian') %>% 
-                                    group_by(class,species,grid_id) %>% summarise(area = sum(area)) %>% ungroup()
+                                    group_by(class,species,grid_id) %>%
+                                    summarise(area = sum(area)) %>%
+                                    ungroup()
 ```
 
-# 物种丰富度
+# read traits dataset
 
 ```{r}
-china_map_std <- st_read('../StandardMap_China/Base_SingleChinaRegion_GS20204615_2.shp')
-china_map_std <- st_transform(china_map_std, st_crs(grid)) %>% mutate(line = tidyr::replace_na(line, 0)) %>% filter(line != 2)
-grid <- st_read("../chinese_terrestral//input//grid.shp")
-```
-
-```{r}
-filter(Chinese_species_distribution_grid,class == 'amphibian')$species %>% unique() %>% length() # number of Chinese amphibians
-amphibian <- filter(Chinese_species_distribution_grid,class == 'amphibian') %>%
-    group_by(grid_id) %>% summarize(richness = length(unique(species)))
-map <- left_join(amphibian,grid,by = c('grid_id'='id'))
-options(repr.plot.width=12, repr.plot.height=10)
-amphibian_richness <- ggplot()+
-    geom_sf(data = china_map_std,aes(geometry = geometry),colour='black',fill='grey90',size=0.2)+
-    geom_sf(data = map,aes(fill = richness,geometry = geometry),colour='white',alpha=0.8,size=0)+
-    scale_fill_distiller(palette = "Spectral")+ # fill 
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          plot.title = element_text(hjust = 0.5),
-         legend.position = c(0.13,0.2),
-         legend.key.size = unit(18, "pt"),
-         legend.title=element_text(size=13),
-         legend.text=element_text(size=10))
-amphibian_richness
-# ggsave('amphibian_species_richness.tiff',height = 7,width = 7,units = 'in',dpi=300)
-```
-
-# 读入性状数据
-
-```{r}
-Ecological_chinese <- read.csv("Ecological_correlates_of_extinction_risk_in_Chinese_amphibians.csv") %>%  # already corrected iucn2020_binomial according to https://www.amphibiachina.org/
-                        select(-Species)
+Ecological_chinese <- read.csv("Ecological_correlates_of_extinction_risk_in_Chinese_amphibians.csv") %>%  
+                        select(-Species) #  already corrected iucn2020_binomial according to https://www.amphibiachina.org/
 ```
 
 ```{r}
@@ -70,21 +42,20 @@ summary(Ecological_chinese)
 
 ```{r}
 Ecological_chinese <- mutate(Ecological_chinese, 
-    clutch_size_mean = (Litter_size_min_n + Litter_size_max_n) / 2,  
-    Development_mode = as.factor(Development_mode),
-    Breeding_site = as.factor(Breeding_site),
-    Adult_microhabitat = as.factor(Adult_microhabitat),
-    Primary_larval_habitat = as.factor(Primary_larval_habitat),
-    Reproductive_cycle = as.factor(Reproductive_cycle),
-    Parent_care = as.factor(Parent_care),
-    Fertilization_type = as.factor(Fertilization_type),
-    Habitat_specificity = as.numeric(Habitat_specificity)
-) %>% select(-c(Litter_size_min_n, Litter_size_max_n))  # delete 'clutch_size_mean' (NA's:137) 
+                            clutch_size_mean = (Litter_size_min_n + Litter_size_max_n) / 2,  
+                            Development_mode = as.factor(Development_mode),
+                            Breeding_site = as.factor(Breeding_site),
+                            Adult_microhabitat = as.factor(Adult_microhabitat),
+                            Primary_larval_habitat = as.factor(Primary_larval_habitat),
+                            Reproductive_cycle = as.factor(Reproductive_cycle),
+                            Parent_care = as.factor(Parent_care),
+                            Fertilization_type = as.factor(Fertilization_type),
+                            Habitat_specificity = as.numeric(Habitat_specificity)) %>%
+    select(-c(Litter_size_min_n, Litter_size_max_n))  # delete 'clutch_size_mean' (NA's:137) 
 summary(Ecological_chinese)
-
 ```
 
-# 填补缺失值
+# fill NAs by phylogeny
 
 ```{r}
 library(Rphylopars)
@@ -93,7 +64,8 @@ phy <- ape::read.tree('../tree2.treefile.dated.tree_with_outgroup_inputed_distri
 phy$tip.label <- gsub('_', ' ', phy$tip.label)
 matched <- picante::match.phylo.data(phy, chinese_traits)
 matched$data_sub <- select(matched$data, Body_size_mm, Body_size_mm_male, Body_size_mm_female, Egg_size) %>% 
-                mutate_all(as.numeric) %>% tibble::rownames_to_column('species')
+                mutate_all(as.numeric) %>%
+                tibble::rownames_to_column('species')
                     
 p_BM <- phylopars(trait_data = matched$data_sub, tree = matched$phy)
 ```
@@ -117,12 +89,13 @@ write.csv(phylo_sig, 'phylo_sig.csv')
 ```
 
 ```{r}
-chinese_traits_imputed <- as.data.frame(p_BM$anc_recon[1:nrow(matched$data_sub),]) %>% rownames_to_column('species') %>%
+chinese_traits_imputed <- as.data.frame(p_BM$anc_recon[1:nrow(matched$data_sub),]) %>%
+                            rownames_to_column('species') %>%
                             left_join(select(Ecological_chinese, !contains('size')), by = c('species'='iucn2020_binomial'))
 summary(chinese_traits_imputed)
 ```
 
-# 降维
+# dimension reduction
 
 ```{r}
 chinese_traits_imputed <- column_to_rownames(chinese_traits_imputed, var = 'species')
@@ -138,7 +111,8 @@ chinese_traits_imputed <- dplyr::select(chinese_traits_imputed,
                                 Reproductive_cycle, 
                                 Parent_care, 
                                 Fertilization_type
-                                ) %>% mutate_if(is.character, as.factor)
+                                ) %>%
+                            mutate_if(is.character, as.factor)
 str(chinese_traits_imputed)
 ```
 
@@ -155,7 +129,7 @@ write.csv(ind_mfa,'ind_mfa.csv')
 ```
 
 ```{r}
-setdiff(Ecological_chinese$iucn2020_binomial, Chinese_species_distribution_grid$species)
+setdiff(Ecological_chinese$iucn2020_binomial, Chinese_species_distribution_grid$species) # species not have distribution
 chinese_traits <- filter(Ecological_chinese, iucn2020_binomial %in% Chinese_species_distribution_grid$species)
 ```
 
@@ -163,28 +137,28 @@ chinese_traits <- filter(Ecological_chinese, iucn2020_binomial %in% Chinese_spec
 library(factoextra)
 options(repr.plot.width=9,repr.plot.height=6)
 eig.val <- get_eigenvalue(mfa)
-fviz_screeplot(mfa,addlabels = TRUE,ncp=8)
-ggsave('PCA/screeplot.tiff',height = 5,width = 7,units = 'in',dpi=300)
+fviz_screeplot(mfa,addlabels = TRUE,ncp=8, ggtheme = theme_bw())
+# ggsave('PCA/screeplot.png',height = 5,width = 7,units = 'in',dpi=300)
 ```
 
 ```{r}
  fviz_mfa_var(mfa, "quali.var", palette = "jco", 
-             col.var.sup = "violet", repel = TRUE, 
-            geom = c("point", "text"), legend = "none",labelsize=3) # Correlation between quantitative variables and dimensions
+              col.var.sup = "violet", repel = TRUE, 
+              geom = c("point", "text"), legend = "none",labelsize=3, ggtheme = theme_bw()) # Correlation between quantitative variables and dimensions
 ```
 
 ```{r}
 options(repr.plot.width=16,repr.plot.height=14)
-p1 <- fviz_mfa_var(mfa, "group", labelsize=3, xlim = c(-0.05,0.65)) # the correlation between groups and dimensions. red color = active groups of variables; green color = supplementary groups of variables
+p1 <- fviz_mfa_var(mfa, "group", labelsize=3, xlim = c(-0.05,0.65), ggtheme = theme_bw()) # the correlation between groups and dimensions. red color = active groups of variables; green color = supplementary groups of variables
 p2 <- fviz_mfa_var(mfa, "quanti.var", palette = "jco", 
              col.var.sup = "violet", repel = TRUE, 
-            geom = c("point", "text"), legend = "none",labelsize=3) # Correlation between quantitative variables and dimensions
+             geom = c("point", "text"), legend = "none",labelsize=3, ggtheme = theme_bw()) # Correlation between quantitative variables and dimensions
 # Contributions to dimension 1
 p3 <- fviz_contrib(mfa, choice = "quanti.var", axes = 1, top = 10,
-             palette = "jco", labelsize=3, legend = c(0.85,0.8))
+             palette = "jco", labelsize=3, legend = c(0.85,0.8), ggtheme = theme_bw())
 # Contributions to dimension 2
 p4 <- fviz_contrib(mfa, choice = "quanti.var", axes = 2, top = 10,
-             palette = "jco", labelsize=3, legend = c(0.85,0.8))
+             palette = "jco", labelsize=3, legend = c(0.85,0.8), ggtheme = theme_bw())
 
 p1 <- ggpubr::annotate_figure(p1,fig.lab = "A",fig.lab.size = 18)
 p2 <- ggpubr::annotate_figure(p2,fig.lab = "B",fig.lab.size = 18)
@@ -192,7 +166,7 @@ p3 <- ggpubr::annotate_figure(p3,fig.lab = "C",fig.lab.size = 18)
 p4 <- ggpubr::annotate_figure(p4,fig.lab = "D",fig.lab.size = 18)
 
 pca_dimensions_plot <- ggpubr::ggarrange(p1,p2,p3,p4,ncol = 2,nrow = 2)
-ggsave(filename = 'PCA/pca_dimensions.tiff',plot = pca_dimensions_plot,height = 9,width = 10,units = 'in',dpi=300)
+# ggsave(filename = 'PCA/pca_dimensions.svg',plot = pca_dimensions_plot,height = 9,width = 10)
 ```
 
 ```{r}
@@ -200,20 +174,19 @@ ggsave(filename = 'PCA/pca_dimensions.tiff',plot = pca_dimensions_plot,height = 
 options(repr.plot.width=14,repr.plot.height=12)
 fviz_mfa_ind(mfa, col.ind = "cos2", 
              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
-             repel = TRUE,legend = c(0.1,0.85))
-ggsave('PCA/species_space.tiff',height = 10,width = 10,units = 'in',dpi=300)
+             repel = TRUE,legend = c(0.1,0.85), ggtheme = theme_bw())
+# ggsave('PCA/species_space.svg',height = 10,width = 10)
 ```
 
-# 功能多样性计算
+# functional calculate
 
 ```{r}
 # # distribution data
 #long table to wide table
-Chinese_species_distribution_grid_selected <- filter(
-                                                    Chinese_species_distribution_grid,
-                                                    species %in% unique(row.names(chinese_traits_imputed))
-                                                    ) %>% 
-                                              dplyr::select(grid_id,species) %>% as.data.frame()
+Chinese_species_distribution_grid_selected <- filter(Chinese_species_distribution_grid,
+                                                    species %in% unique(row.names(chinese_traits_imputed))) %>% 
+                                                dplyr::select(grid_id,species) %>%
+                                                as.data.frame()
 Chinese_species_distribution_grid_selected$occurrence <- rep(1,nrow(Chinese_species_distribution_grid_selected))
 Chinese_species_distribution_grid_selected <- spread(Chinese_species_distribution_grid_selected,species,occurrence) 
 
@@ -230,8 +203,6 @@ library(FD)
 FD <- dbFD(ind_mfa, Chinese_species_distribution_grid_selected)
 ```
 
-## 作图
-
 ```{r}
 options(repr.plot.width=15,repr.plot.height=14)
 result <- data.frame(FD$FRic,FD$FEve,FD$FDiv,FD$FDis,FD$RaoQ)
@@ -240,74 +211,85 @@ write.csv(result,'amphibian_result.csv',row.names = F)
 # result <- read.csv('amphibian_result.csv')
 ```
 
+## plot
+
 ```{r}
+# read map layers
+grid <- st_read("../chinese_terrestral/input/grid.shp")
+china_map_std <- st_read('../StandardMap_China/Base_SingleChinaRegion_GS20204615_2.shp')
+china_map_std <- st_transform(china_map_std, st_crs(grid)) %>% mutate(line = tidyr::replace_na(line, 0)) %>% filter(line != 2)
+phyloregions_line <- st_read('../phylogenetic_result/phyloregion/phyloregions_intersect.shp') %>%
+                    mutate(attr = tidyr::replace_na(attr, 3)) %>% mutate(attr = as.factor(attr))
+```
+
+```{r}
+result <- read.csv('amphibian_result.csv')
 result <- left_join(result, grid, by = c('grid_id'='id'))
 ```
 
 ```{r}
+custom_theme <- theme_bw()+
+    theme(panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          plot.title = element_text(hjust = 0.5),
+         legend.position = c(0.23,0.2),
+         legend.key.size = unit(18, "pt"),
+         legend.title=element_text(size=13),
+         legend.text=element_text(size=10))
+
 amphibian_FD <- ggplot()+
     geom_sf(data = china_map_std,aes(geometry = geometry),colour='black',fill='grey90',size=0.2)+
     geom_sf(data = filter(result,!is.na(FD.FRic)),aes(fill = FD.FRic,geometry = geometry),colour='white',alpha=0.8,size=0)+
     scale_fill_distiller(palette = "Spectral")+ # fill 
+    geom_sf(data = phyloregions_line,aes(geometry = geometry,col=attr,size = attr))+
+    scale_color_manual(values = c('red','#F75404', 'grey60'),guide = "none")+ # delete legends of divider 
     scale_size_manual(values = c(0.8,0.6,0.5),guide = "none")+
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          plot.title = element_text(hjust = 0.5),
-         legend.position = c(0.13,0.2),
-         legend.key.size = unit(18, "pt"),
-         legend.title=element_text(size=13),
-         legend.text=element_text(size=10))
-amphibian_FD 
-ggsave('amphibian_FRic.tiff',height = 7,width = 7,units = 'in',dpi=300)
+    labs(fill = "Functional richness")+
+    custom_theme
 amphibian_FV <- ggplot()+
     geom_sf(data = china_map_std,aes(geometry = geometry),colour='black',fill='grey90',size=0.2)+
     geom_sf(data = filter(result,!is.na(FD.FDiv)),aes(fill = FD.FDiv,geometry = geometry),colour='white',alpha=0.8,size=0)+
     scale_fill_distiller(palette = "Spectral")+ # fill 
+    geom_sf(data = phyloregions_line,aes(geometry = geometry,col=attr,size = attr))+
+    scale_color_manual(values = c('red','#F75404', 'grey60'),guide = "none")+ # delete legends of divider 
     scale_size_manual(values = c(0.8,0.6,0.5),guide = "none")+
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          plot.title = element_text(hjust = 0.5),
-         legend.position = c(0.13,0.2),
-         legend.key.size = unit(18, "pt"),
-         legend.title=element_text(size=13),
-         legend.text=element_text(size=10))
-amphibian_FV
-ggsave('amphibian_FDiv.tiff',height = 7,width = 7,units = 'in',dpi=300)
+    labs(fill = "Functional divergence")+
+    custom_theme
 amphibian_FE <- ggplot()+
     geom_sf(data = china_map_std,aes(geometry = geometry),colour='black',fill='grey90',size=0.2)+
     geom_sf(data = filter(result,!is.na(FD.FEve)),aes(fill = FD.FEve,geometry = geometry),colour='white',alpha=0.8,size=0)+
-    scale_fill_distiller(palette = "Spectral",na.value="grey90")+ # fill 
+    scale_fill_distiller(palette = "Spectral",na.value="#5b5b5b",limits=c(0.4, 1))+ # fill 
+    geom_sf(data = phyloregions_line,aes(geometry = geometry,col=attr,size = attr))+
+    scale_color_manual(values = c('red','#F75404', 'grey60'),guide = "none")+ # delete legends of divider
     scale_size_manual(values = c(0.8,0.6,0.5),guide = "none")+
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          plot.title = element_text(hjust = 0.5),
-         legend.position = c(0.13,0.2),
-         legend.key.size = unit(18, "pt"),
-         legend.title=element_text(size=13),
-         legend.text=element_text(size=10))
-amphibian_FE
-ggsave('amphibian_FD.Eve.tiff',height = 7,width = 7,units = 'in',dpi=300)
+    labs(fill = "Functional evenness")+
+    custom_theme
 ```
 
 # Funtional rarity
 
 ```{r}
-species_distribution_area <- group_by(Chinese_species_distribution_grid, species) %>% summarise(grid_area = n_distinct(grid_id))
-```
-
-```{r}
-iucn_level <- read.csv('../iucn_level_download.csv') %>% dplyr::select(-X)
-```
-
-```{r}
 dist_matrix <- funrar::compute_dist_matrix(ind_mfa, metric = "euclidean")
 funrar <- funrar::funrar(Chinese_species_distribution_grid_selected, dist_matrix, rel_abund = FALSE)
-Distinctness <- as.data.frame(funrar$Di) %>% rownames_to_column(var = 'grid_id')
-Dinstinctness_long <- gather(Distinctness, key = 'species', value = 'distinctness', -grid_id) %>% filter(!is.na(distinctness))
+```
 
+```{r}
+species_distribution_area <- group_by(Chinese_species_distribution_grid, species) %>%
+    summarise(grid_area = n_distinct(grid_id))
+```
+
+## distinctness
+
+```{r}
+iucn_level <- read.csv('../iucn_level_download.csv') %>%
+    dplyr::select(-X)
+```
+
+```{r}
+Distinctness <- as.data.frame(funrar$Di) %>%
+    rownames_to_column(var = 'grid_id')
+Dinstinctness_long <- gather(Distinctness, key = 'species', value = 'distinctness', -grid_id) %>%
+    filter(!is.na(distinctness))
 ```
 
 ```{r}
@@ -316,8 +298,10 @@ top_FRic_grid <- arrange(result, desc(FD.FRic))[1:thresold_area, ] %>% pull(grid
 top_FRic_species <- filter(Dinstinctness_long, grid_id %in% top_FRic_grid)  %>%
                         left_join(iucn_level, by = c('species' = 'name')) %>% 
                         left_join(species_distribution_area, by = c('species')) %>% 
-                        group_by(grid_id) %>% arrange(desc(distinctness)) %>%
-                        filter(grid_area < thresold_area & result.category %in% c('VU', 'EN', 'CR', 'EX', 'EW')) %>% slice(1:3)
+                        group_by(grid_id) %>%
+                        arrange(desc(distinctness)) %>%
+                        filter(grid_area < thresold_area & result.category %in% c('VU', 'EN', 'CR', 'EX', 'EW')) %>%
+                        slice(1:3)
 unique(top_FRic_species$species)
 ```
 
@@ -325,9 +309,48 @@ unique(top_FRic_species$species)
 top_FRic_species
 ```
 
+## uniqueness
+
+```{r}
+Ui_distribution <- filter(Chinese_species_distribution_grid,
+       species %in% unique(row.names(chinese_traits_imputed))) %>% 
+    dplyr::select(grid_id,species) %>%
+    as.data.frame() %>%
+    left_join(funrar$Ui, by = 'species') %>% 
+    left_join(species_distribution_area, by = 'species') %>%
+    group_by(grid_id) %>% 
+    summarise(Ui_mean = sum(Ui/grid_area))   # weighted by distribution range area
+Ui_map <- left_join(Ui_distribution, grid, by = c('grid_id'='id'))
+```
+
+```{r}
+filter(Ui_distribution, Ui_mean > 3)
+```
+
+```{r}
+amphibian_Ui <- ggplot()+
+    geom_sf(data = china_map_std,aes(geometry = geometry),colour='black',fill='grey90',size=0.2)+
+    geom_sf(data = Ui_map,aes(fill = Ui_mean,geometry = geometry),colour='white',alpha=0.8,size=0)+
+    scale_fill_distiller(palette = "Spectral",na.value="#5b5b5b")+ # fill 
+    geom_sf(data = phyloregions_line,aes(geometry = geometry,col=attr,size = attr))+
+    scale_color_manual(values = c('red','#F75404', 'grey60'),guide = "none")+ # delete legends of divider 
+    scale_size_manual(values = c(0.8,0.6,0.5),guide = "none")+
+    labs(fill = "Functional uniqueness")+
+    custom_theme
+amphibian_Ui
+```
+
 # save picture
 
 ```{r}
-save(amphibian_richness, amphibian_FD, amphibian_FV, amphibian_FE, 
+options(repr.plot.width=13, repr.plot.height=12)
+fig_FD <- ggpubr::ggarrange(amphibian_FD, amphibian_FV, amphibian_FE,amphibian_Ui, labels = c("A", "B", "C", "D"),
+                             font.label = list(size = 18), ncol = 2, nrow = 2)
+fig_FD
+ggsave('fig.svg',height = 10,width = 10)
+```
+
+```{r}
+save(amphibian_Ui,amphibian_FD, amphibian_FV, amphibian_FE, 
      file = "amphibian_FD.Rdata")
 ```
