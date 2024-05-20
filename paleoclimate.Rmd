@@ -22,14 +22,22 @@ library(tidyverse)
 
 ```{r}
 grid <- st_read("./chinese_terrestral//input//grid.shp")  # china grid
-south_ocean <- st_read("./chinese_terrestral//input//China-9-1.shp") %>%
-    st_transform(crs = st_crs(grid))
+china_map <- st_read('StandardMap_China/Base_SingleChinaRegion_GS20204615_2.shp') %>%
+    st_transform(crs = st_crs(grid)) %>% 
+    mutate(line = tidyr::replace_na(line, 0)) %>% filter(line != 2)
 grid_raster <- raster(crs = crs(grid), vals = 0, resolution = c(50000, 50000), ext = extent(as.vector(extent(grid)))) %>%
     rasterize(grid, .)
 intersection_grid <- raster("./chinese_terrestral/SHP/intersection_grid.tif")
 x <- (grid$left + grid$right)/2
 y <- (grid$top + grid$bottom)/2
 xy <- cbind(x, y)  # midpoint of grid
+```
+
+```{r}
+custom_theme <- theme_bw()+
+    theme(panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          plot.title = element_text(hjust = 0.5))
 ```
 
 # Climate
@@ -139,20 +147,12 @@ ggplot()+
     geom_sf(data = rdls,aes(fill = X50km_range,geometry = geometry),colour='white',alpha=0.8,size=0)+
     scale_fill_distiller(palette = "Spectral")+ # fill 
     ggtitle("rdls")+
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          plot.title = element_text(hjust = 0.5))
-rdls <- st_read('~/paleoclimate/Rdls_SHP/rdls.shp')
+    custom_theme
 ggplot()+
     geom_sf(data = rdls,aes(fill = X50km_stdev,geometry = geometry),colour='white',alpha=0.8,size=0)+
     scale_fill_distiller(palette = "Spectral")+ # fill 
     ggtitle("rdls")+
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          plot.title = element_text(hjust = 0.5))
-
+    custom_theme
 ```
 
 ## population 10000BC
@@ -177,60 +177,55 @@ paleovalue <- cbind(grid$id,xy,
             rename(id=V1) %>% left_join(st_drop_geometry(rdls),by = c('id'))
 ```
 
+```{r}
+paleovalue <- read.csv('environment_variables.csv')
+```
+
 ## draw
 
 ```{r}
-options(repr.plot.width=10, repr.plot.height=8)
-
 map <- left_join(paleovalue,grid,by = 'id')
-china_map <- st_read("./chinese_terrestral//SHP//China_map.shp")
+```
+
+```{r}
+options(repr.plot.width=10, repr.plot.height=8)
 ggplot()+geom_sf(data = china_map,aes(geometry = geometry),colour='grey60',fill='grey90',size=0.2)+
     geom_sf(data = map,aes(fill = prec,geometry = geometry),colour='white',alpha=0.8,size=0)+
     scale_fill_distiller(palette = "Spectral")+ # fill 
     ggtitle("prec")+
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          plot.title = element_text(hjust = 0.5))
+    custom_theme
 ggplot()+geom_sf(data = china_map,aes(geometry = geometry),colour='grey60',fill='grey90',size=0.2)+
     geom_sf(data = map,aes(fill = LGM_dO_velocity,geometry = geometry),colour='white',alpha=0.8,size=0)+
     scale_fill_distiller(palette = "Spectral",direction = -1)+ # fill 
     ggtitle("LGM_dO_velocity")+
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          plot.title = element_text(hjust = 0.5))
+    custom_theme
 ```
 
 ```{r}
-ggplot()+geom_sf(data = south_ocean,aes(geometry = geometry),colour='grey60',fill='grey90',size=0.2)+
-    geom_sf(data = china_map,aes(geometry = geometry),colour='grey60',fill='grey90',size=0.2)+
-    geom_sf(data = map,aes(fill = tavg,geometry = geometry),colour='white',alpha=0.8,size=0)+
-    scale_fill_distiller(name="modern temperature",palette = "Spectral")+ # fill 
-    ggtitle("modern temperature")+
-    theme_bw()+
+map_custom_theme <- theme_bw()+
     theme(panel.grid.major=element_blank(),
           panel.grid.minor=element_blank(),
-          legend.position = c(0.2,0.2),
+          legend.position = c(0.3,0.2),
          legend.key.size = unit(18, "pt"),
          legend.title=element_text(size=13),
          legend.text=element_text(size=10),
           plot.title = element_text(hjust = 0.5))
-ggplot()+geom_sf(data = south_ocean,aes(geometry = geometry),colour='grey60',fill='grey90',size=0.2)+
+# ggplot()+geom_sf(data = south_ocean,aes(geometry = geometry),colour='grey60',fill='grey90',size=0.2)+
+#     geom_sf(data = china_map,aes(geometry = geometry),colour='grey60',fill='grey90',size=0.2)+
+#     geom_sf(data = map,aes(fill = tavg,geometry = geometry),colour='white',alpha=0.8,size=0)+
+#     scale_fill_distiller(name="modern temperature",palette = "Spectral")+ # fill 
+#     ggtitle("modern temperature")+
+#     map_custom_theme
+
+ggplot()+
     geom_sf(data = china_map,aes(geometry = geometry),colour='grey60',fill='grey90',size=0.2)+
     geom_sf(data = map,aes(fill = -1*LGM_sat_velocity,geometry = geometry),colour='white',alpha=0.8,size=0)+
     scale_fill_distiller(name="LGM temperature change(℃)",palette = "Spectral")+ # fill 
-    ggtitle("LGM_temperature_change")+
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          legend.position = c(0.2,0.2),
-         legend.key.size = unit(18, "pt"),
-         legend.title=element_text(size=13),
-         legend.text=element_text(size=10),
-          plot.title = element_text(hjust = 0.5))
+#     ggtitle("LGM_temperature_change")+
+    map_custom_theme
 
-# ggsave('LGM_sat_velocity.tiff',width = 7,height = 7,units = 'in',dpi = 300)
+# ggsave('Fig/LGM_sat_velocity.png',width = 7,height = 7,units = 'in',dpi = 300)
+ggsave('Fig/LGM_sat_velocity.svg',width = 7,height = 7)
 ```
 
 ```{r}
@@ -238,18 +233,12 @@ ggplot()+geom_sf(data = china_map,aes(geometry = geometry),colour='grey60',fill=
     geom_sf(data = map,aes(fill = pop_value,geometry = geometry),colour='white',alpha=0.8,size=0)+
     scale_fill_distiller(palette = "Spectral")+ # fill 
     ggtitle("Population")+
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          plot.title = element_text(hjust = 0.5))
+    custom_theme
 ggplot()+geom_sf(data = china_map,aes(geometry = geometry),colour='grey60',fill='grey90',size=0.2)+
     geom_sf(data = map,aes(fill = pop_10000BC_value,geometry = geometry),colour='white',alpha=0.8,size=0)+
     scale_fill_distiller(palette = "Spectral")+ # fill 
     ggtitle("pop_10000BC_value")+
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          plot.title = element_text(hjust = 0.5))
+    custom_theme
 ```
 
 ```{r}

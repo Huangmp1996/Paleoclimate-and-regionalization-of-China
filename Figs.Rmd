@@ -17,6 +17,7 @@ jupyter:
 library(png)
 library(tidyverse)
 library(ragg)
+library(ggpubr)
 ```
 
 ```{r}
@@ -28,22 +29,15 @@ load('Fig/nri.Rdata')
 ```
 
 ```{r}
+load('ave/bird_fast_slow_cwm.Rdata')
+load('mammal/mammal_fast_slow_cwm.Rdata')
+```
+
+```{r}
 lizard_img <- readPNG('phyloPic/PhyloPic.02811a3f.Gopal-Murali.Lygosominae_Scincidae_Scincoidea_Scincomorpha_Sphenomorphini_Sphenomorphus_Sphenomorphus-dussumieri_Squamata_Unidentata.png')
 amphibian_img <- readPNG('phyloPic/PhyloPic.4d1f2d5f.Beth-Reinke.Pelophylax_Pelophylax-perezi_Ranidae.png')
 bird_img <- readPNG('phyloPic/PhyloPic.7f02b605.Lauren-Anderson.Gruidae_Gruinae_Grus_Grus-canadensis.png')
 mammal_img <- readPNG('phyloPic/PhyloPic.3d259941.Margot-Michaud.Ailuropoda-melanoleuca.png')
-```
-
-```{r}
-options(repr.plot.width=13, repr.plot.height=12)
-fig_richness <- ggpubr::ggarrange(amphibian_richness, lizard_richness, bird_richness, mammal_richness, labels = c("A", "B", "C", "D"),
-                             font.label = list(size = 18), ncol = 2, nrow = 2) +
-                                annotation_raster(amphibian_img,0.16,0.24,0.56,0.655) +                
-                                annotation_raster(lizard_img,0.68,0.74,0.53,0.67) +
-                                annotation_raster(bird_img,0.16,0.23,0.08,0.17) +
-                                annotation_raster(mammal_img,0.66,0.74,0.08,0.16)
-fig_richness
-ggsave('Fig/richness.tiff',height = 10,width = 10,units = 'in',dpi = 300)
 ```
 
 ```{r}
@@ -83,24 +77,21 @@ ggsave('Fig/FE.tiff',height = 10,width = 10,units = 'in',dpi = 300)
 ```
 
 ```{r}
+fig_cwm_map <- ggpubr::ggarrange(bird_fast_slow_cwm_map, mammal_fast_slow_cwm_map, 
+                             bird_fast_slow_cwm_map_abnormal, mammal_fast_slow_cwm_map_abnormal,
+                             font.label = list(size = 18), ncol = 2, nrow = 2, 
+                             labels = c("A", "B", "C", "D"))
+ggsave('Fig/fig_cwm_map.svg',height = 10,width = 10)
+```
+
+```{r}
 options(repr.plot.width=14, repr.plot.height=12)
-fig_cwm <- ggpubr::ggarrange(bird_cwm_fast_slow, mammal_cwm_fast_slow,
-                             font.label = list(size = 18), ncol = 2, nrow = 1)
-```
-
-```{r}
+fig_cwm <- ggpubr::ggarrange(bird_pca_var_plot, mammal_pca_var_plot, 
+                             bird_cwm_fast_slow, mammal_cwm_fast_slow,
+                             font.label = list(size = 18), ncol = 2, nrow = 2, 
+                            heights = c(1, 1.3))
+fig_cwm <- ggpubr::annotate_figure(fig_cwm, bottom = text_grob('LGM temperature change (\u00B0C)'))
 fig_cwm
-ggsave('Fig/cwm.tiff',height = 3,width = 7,device = agg_tiff,units = 'in',dpi = 300, scaling = 0.5)
-```
-
-```{r}
-options(repr.plot.width=13, repr.plot.height=12)
-fig_nri <- ggpubr::ggarrange(amphibian_nri, lizard_nri, ave_nri, mammal_nri, labels = c("A", "B", "C", "D"),
-                             font.label = list(size = 18), ncol = 2, nrow = 2) +
-                                annotation_raster(amphibian_img,0.16,0.24,0.56,0.66) +                
-                                annotation_raster(lizard_img,0.68,0.74,0.53,0.67) +
-                                annotation_raster(bird_img,0.17,0.23,0.07,0.17) +
-                                annotation_raster(mammal_img,0.66,0.74,0.08,0.16)
-fig_nri
-ggsave('Fig/NRI.tiff',height = 10,width = 10,device = agg_tiff,units = 'in',dpi = 300, scaling = 0.8)
+# ggsave('Fig/cwm.tiff',height = 3,width = 7,device = agg_tiff,units = 'in', scaling = 0.5)
+ggsave('Fig/cwm_hex.pdf',height = 10,width = 11,units = 'in', scale = 1.5)
 ```

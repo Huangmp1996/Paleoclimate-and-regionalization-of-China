@@ -48,8 +48,8 @@ colnames(mammal_FD) <- ifelse(colnames(mammal_FD)!='grid_id',paste0('mammal_',co
 # transfer MPD,MNTD to NRI,NTI
 amphibian_phylog <- read.csv("./phylogenetic_result/amphibian_phylogenetic_diversity.csv") %>% 
                         select(grid_id, amphibian_ntaxa.x, amphibian_NRI, amphibian_NTI)
-lizard_phylog <- read.csv("./phylogenetic_result/lizard_phylogenetic_diversity.csv") %>% 
-                    select(grid_id, lizard_ntaxa.x, lizard_NRI, lizard_NTI)
+lizard_phylog <- read.csv("./phylogenetic_result/reptile_phylogenetic_diversity.csv") %>% 
+                    select(grid_id, reptile_ntaxa.x, reptile_NRI, reptile_NTI)
 ave_phylog <- read.csv("./phylogenetic_result/ave_phylogenetic_diversity.csv") %>% 
                     select(grid_id, ave_ntaxa.x, ave_NRI, ave_NTI)
 mammal_phylog <- read.csv("./phylogenetic_result/mammal_phylogenetic_diversity.csv") %>% 
@@ -78,44 +78,6 @@ total_table <- full_join(amphibian_FD,ave_FD,by = 'grid_id') %>%
                 full_join(env,by = c('grid_id' = 'id'))
 ```
 
-# anova comapre
-
-```{r}
-library(agricolae)
-```
-
-```{r}
-total_anova <- select(total_table, contains('NRI')|contains('NTI')) %>% tidyr::gather(taxonomy, value, colnames(.)) %>% 
-                na.omit() %>% tidyr::separate(col = taxonomy, into = c('taxonomy', 'index'), sep = '_', remove = TRUE)
-head(total_anova)
-total_anova$taxonomy <- factor(total_anova$taxonomy, levels = c('amphibian', 'lizard', 'ave', 'mammal'))
-```
-
-```{r}
-nri_anova <- filter(total_anova, index == 'NRI')
-
-fit1 <- aov(value~taxonomy, data = nri_anova)
-summary(fit1)
-
-lsd1 <- LSD.test(fit1, "taxonomy", p.adj = "bonferroni" )
-print(lsd1$groups)
-```
-
-```{r}
-nti_anova <- filter(total_anova, index == 'NTI')
-fit2 <- aov(value~taxonomy, data = nti_anova)
-summary(fit2)
-
-lsd2 <- LSD.test(fit2, "taxonomy", p.adj = "bonferroni" )
-print(lsd2$groups)
-```
-
-```{r}
-options(repr.plot.width=10, repr.plot.height=5)
-ggplot(data = total_anova) + geom_boxplot(aes(x = taxonomy, y = value)) + facet_grid(. ~ index) + theme_bw()
-ggsave('Fig/phylogenetic_struture_compare_boxplot.tiff', width = 6, height = 3, units = 'in', dpi = 300)
-```
-
 # model analyze
 
 ```{r}
@@ -125,6 +87,20 @@ options(repr.plot.width=14, repr.plot.height=8)
 corrplot(res,method = "shade",shade.col = NA, tl.col ="black", tl.srt = 45, order = "alphabet",tl.cex = 1.5,addCoef.col = "grey")
 dev.off()
 head(total_table)
+```
+
+```{r}
+lm_fit <- lm(mammal_NRI~prec + tavg + LGM_sat_velocity + LGM_dO_velocity + X50km_range + pop_10000BC_value,data = total_table)
+
+#create vector of VIF values
+vif_values <- car::vif(lm_fit)
+
+svglite::svglite(filename = "Fig/vif.svg", width = 7, height = 5)
+#create horizontal bar chart to display each VIF value
+barplot(vif_values, main = "VIF Values", horiz = TRUE, col = "steelblue",las=2,
+       names.arg = c('modern prec.','modern temp.','LGM temp. change','LGM prec. change','elevation range','historical Anthrop.'))
+abline(v = 2, lwd = 3, lty = 2)
+dev.off()
 ```
 
 ```{r}
@@ -177,7 +153,7 @@ y_variables <- c('amphibian_FD.FRic','amphibian_FD.FEve','amphibian_FD.FDiv',
                  'amphibian_NRI','amphibian_NTI',
                  'ave_NRI','ave_NTI',
                  'mammal_NRI','mammal_NTI',
-                 'lizard_NRI','lizard_NTI')
+                 'reptile_NRI','reptile_NTI')
 ```
 
 ```{r}
@@ -200,9 +176,10 @@ stopCluster(cl)
 
 ```{r}
 names(model_result_tmp)[names(model_result_tmp) == 't-value'] <- 't_value'
-# write.csv(model_result_tmp,'model_result_original.csv',row.names=F)
+write.csv(model_result_tmp,'model_result_original.csv',row.names=F)
 model_result <- model_result_tmp
 model_result$class[model_result$class == 'ave'] <- 'bird'
+model_result$class[model_result$class == 'lizard'] <- 'reptile'
 model_result$diversity_index <- gsub('FD\\.', '', model_result$diversity_index)
 model_result$diversity_index <- gsub('FD_', '', model_result$diversity_index)
 model_result$item <- dplyr::recode(model_result$item,
@@ -219,14 +196,18 @@ head(model_result)
 ```
 
 ```{r}
+unique(model_result_tmp$item)
+```
+
+```{r}
 # set p value threshold
 options(repr.plot.width=18, repr.plot.height=8)
 model_result_main <- filter(model_result,diversity_index %in% c('NRI','NTI','FRic','FDiv','FEve')) %>% 
     mutate(p_value = case_when(
         class == 'amphibian' & diversity_index %in% c('FRic', 'FDiv', 'FEve') ~ pt(abs(t_value), 2350, lower.tail = FALSE),
         class == 'amphibian' & diversity_index %in% c('NRI', 'NTI') ~ pt(abs(t_value), 2530, lower.tail = FALSE),
-        class == 'lizard' & diversity_index %in% c('FRic', 'FDiv', 'FEve') ~ pt(abs(t_value), 3650, lower.tail = FALSE),
-        class == 'lizard' & diversity_index %in% c('NRI', 'NTI') ~ pt(abs(t_value), 3848, lower.tail = FALSE),
+        class == 'reptile' & diversity_index %in% c('FRic', 'FDiv', 'FEve') ~ pt(abs(t_value), 3650, lower.tail = FALSE),
+        class == 'reptile' & diversity_index %in% c('NRI', 'NTI') ~ pt(abs(t_value), 3848, lower.tail = FALSE),
         class %in% c('bird', 'mammal') ~ pt(abs(t_value), 3881, lower.tail = FALSE)),  # number of grids: 3888
        sig = case_when(p_value > 0.05 ~ 'not_significant',
                        p_value <= 0.05 & Estimate > 0 ~ 'positively_significant',
@@ -235,11 +216,11 @@ model_result_main <- filter(model_result,diversity_index %in% c('NRI','NTI','FRi
     filter(item != '(Intercept)') 
 
 model_result_main$class<- factor(model_result_main$class, 
-                                 levels = c("amphibian","lizard","bird","mammal"))
+                                 levels = c("amphibian","reptile","bird","mammal"))
 model_result_main$diversity_index <- factor(model_result_main$diversity_index,
                                             levels = c('NRI','NTI','FRic','FDiv','FEve'))
 
-# write.csv(model_result_main,'model_result_main.csv',row.names=F)
+write.csv(model_result_main,'model_result_main.csv',row.names=F)
 ```
 
 ```{r}
@@ -270,6 +251,7 @@ p_main <- ggplot(model_result_main,aes(x = item, y = Estimate, fill = sig)) + ge
          legend.position = 'none')+
     scale_y_continuous(limits = limits_fun)+
     scale_x_discrete(expand=c(0, 0.5))
-ggsave('Fig/model_result_main.tiff', plot = p_main, height = 6, width = 11, units = 'in', dpi=300)
-
+p_main
+ggsave('Fig/model_result_main.png', plot = p_main, height = 6, width = 11, units = 'in', dpi=300)
+ggsave('Fig/model_result_main.svg', plot = p_main, height = 6, width = 11)
 ```
